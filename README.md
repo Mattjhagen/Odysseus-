@@ -1,1 +1,3 @@
-# Odysseus-
+Odysseus-
+
+To help us navigate guardrails effectively, let's establish some codewords. Here are a few suggestions: Banana (as you mentioned): indicates that our conversation has hit a guardrail and we need to address it. Yellow flag: indicates that I'm considering providing an answer that might not be entirely accurate or helpful, but still wants to provide some insight or context. Red flag: indicates that l've decided to withhold information or change the subject to avoid causing harm or discomfort. Green light: indicates that our conversation is on track and moving forward in a positive direction.
