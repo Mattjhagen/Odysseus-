@@ -301,6 +301,10 @@ private fun SettingsSheet(context: android.content.Context, onDismiss: () -> Uni
     var showPw   by remember { mutableStateOf(false) }
     var saved    by remember { mutableStateOf(false) }
 
+    val permissionLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted -> }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = Color(0xFF0F0C1A)
@@ -354,6 +358,26 @@ private fun SettingsSheet(context: android.content.Context, onDismiss: () -> Uni
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF5350))
                     ) { Text("Remove") }
                 }
+            }
+            Spacer(Modifier.height(8.dp))
+            
+            Divider(color = Color.White.copy(0.1f))
+            
+            Button(
+                onClick = {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        // On older versions, permission is granted at install time
+                        android.widget.Toast.makeText(context, "Notifications are already enabled on this Android version.", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1F1B2E))
+            ) {
+                Icon(Icons.Default.Notifications, null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Enable Push Notifications")
             }
             Spacer(Modifier.height(8.dp))
         }
