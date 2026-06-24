@@ -20,8 +20,9 @@ object ServerRouter {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
         fun currentUrl(): Pair<String, Boolean> {
-            val onLocal = isOnLocalNetwork(context)
-            return Pair(if (onLocal) LOCAL else REMOTE, onLocal)
+            // User requested remote to be the default instead of auto-switching to local
+            val onLocal = false 
+            return Pair(REMOTE, onLocal)
         }
 
         trySend(currentUrl())
