@@ -82,14 +82,10 @@ fun MainScreen(activity: FragmentActivity) {
         }
     }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted -> }
-
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                androidx.core.app.ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
             }
         }
     }
@@ -245,6 +241,7 @@ fun MainScreen(activity: FragmentActivity) {
     if (showSettings) {
         SettingsSheet(
             context = context,
+            activity = activity,
             onDismiss = { showSettings = false }
         )
     }
@@ -295,15 +292,11 @@ private fun TopBar(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SettingsSheet(context: android.content.Context, onDismiss: () -> Unit) {
+private fun SettingsSheet(context: android.content.Context, activity: android.app.Activity, onDismiss: () -> Unit) {
     var username by remember { mutableStateOf(CredentialStore.load(context)?.username ?: "") }
     var password by remember { mutableStateOf(CredentialStore.load(context)?.password ?: "") }
     var showPw   by remember { mutableStateOf(false) }
     var saved    by remember { mutableStateOf(false) }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-    ) { isGranted -> }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -366,7 +359,7 @@ private fun SettingsSheet(context: android.content.Context, onDismiss: () -> Uni
             Button(
                 onClick = {
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                        permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                        androidx.core.app.ActivityCompat.requestPermissions(activity, arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1001)
                     } else {
                         // On older versions, permission is granted at install time
                         android.widget.Toast.makeText(context, "Notifications are already enabled on this Android version.", android.widget.Toast.LENGTH_SHORT).show()
