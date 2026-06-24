@@ -68,6 +68,19 @@ fun MainScreen(activity: FragmentActivity) {
 
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
 
+    val fileChooserLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val intent = result.data
+        if (result.resultCode == android.app.Activity.RESULT_OK && intent != null) {
+            val results = android.webkit.WebChromeClient.FileChooserParams.parseResult(result.resultCode, intent)
+            AppState.fileChooserCallback?.onReceiveValue(results)
+        } else {
+            AppState.fileChooserCallback?.onReceiveValue(null)
+        }
+        AppState.fileChooserCallback = null
+    }
+
     // Collect server URL changes
     LaunchedEffect(Unit) {
         activity.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -147,7 +160,12 @@ fun MainScreen(activity: FragmentActivity) {
                                 }
                             }
                         },
-                        onReceivedError = { loadError = it }
+                        onReceivedError = { loadError = it },
+                        onShowFileChooser = { intent, callback ->
+                            AppState.fileChooserCallback?.onReceiveValue(null)
+                            AppState.fileChooserCallback = callback
+                            fileChooserLauncher.launch(intent)
+                        }
                     )
                     wv.loadUrl(serverUrl)
                 }

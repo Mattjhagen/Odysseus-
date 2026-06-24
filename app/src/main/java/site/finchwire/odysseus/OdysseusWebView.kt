@@ -14,7 +14,8 @@ import android.webkit.WebViewClient
 fun WebView.configure(
     onProgressChanged: (Int) -> Unit,
     onPageFinished: (String?) -> Unit,
-    onReceivedError: (String) -> Unit
+    onReceivedError: (String) -> Unit,
+    onShowFileChooser: ((android.content.Intent, android.webkit.ValueCallback<Array<android.net.Uri>>) -> Unit)? = null
 ) {
     WebView.setWebContentsDebuggingEnabled(true)
 
@@ -33,6 +34,18 @@ fun WebView.configure(
     webChromeClient = object : WebChromeClient() {
         override fun onProgressChanged(view: WebView, newProgress: Int) {
             onProgressChanged(newProgress)
+        }
+
+        override fun onShowFileChooser(
+            webView: WebView?,
+            filePathCallback: android.webkit.ValueCallback<Array<android.net.Uri>>?,
+            fileChooserParams: FileChooserParams?
+        ): Boolean {
+            if (filePathCallback != null && fileChooserParams != null && onShowFileChooser != null) {
+                onShowFileChooser(fileChooserParams.createIntent(), filePathCallback)
+                return true
+            }
+            return false
         }
     }
 
