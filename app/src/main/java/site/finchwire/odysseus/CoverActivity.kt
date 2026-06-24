@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -117,7 +118,8 @@ fun CoverScreen(activity: FragmentActivity) {
                                     wv.injectAutoLogin(c.username, c.password)
                                 }
                             }
-                        }
+                        },
+                        onReceivedError = { /* ignore for cover screen */ }
                     )
                     wv.loadUrl(serverUrl)
                     // Scale down the web content to fit the cover screen
@@ -344,4 +346,4 @@ private fun CoverIconButton(icon: androidx.compose.ui.graphics.vector.ImageVecto
 
 @Suppress("NOTHING_TO_INLINE")
 private inline fun Modifier.alpha(value: Float): Modifier =
-    this.then(androidx.compose.ui.draw.graphicsLayer { alpha = value })
+    this.graphicsLayer { alpha = value }

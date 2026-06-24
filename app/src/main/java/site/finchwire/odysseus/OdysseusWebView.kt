@@ -1,7 +1,10 @@
 package site.finchwire.odysseus
 
 import android.annotation.SuppressLint
+import android.os.Build
+import android.util.Log
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -10,8 +13,11 @@ import android.webkit.WebViewClient
 @SuppressLint("SetJavaScriptEnabled")
 fun WebView.configure(
     onProgressChanged: (Int) -> Unit,
-    onPageFinished: (String?) -> Unit
+    onPageFinished: (String?) -> Unit,
+    onReceivedError: (String) -> Unit
 ) {
+    WebView.setWebContentsDebuggingEnabled(true)
+
     settings.apply {
         javaScriptEnabled          = true
         domStorageEnabled          = true
@@ -20,7 +26,7 @@ fun WebView.configure(
         loadWithOverviewMode       = true
         useWideViewPort            = true
         mixedContentMode           = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-        cacheMode                  = WebSettings.LOAD_CACHE_ELSE_NETWORK
+        cacheMode                  = WebSettings.LOAD_DEFAULT
         mediaPlaybackRequiresUserGesture = false
     }
 
@@ -32,8 +38,29 @@ fun WebView.configure(
 
     webViewClient = object : WebViewClient() {
         override fun onPageFinished(view: WebView, url: String?) {
+            Log.d("OdysseusWebView", "Page finished: $url")
+            // Ensure WebView is visible once loaded
+            view.visibility = android.view.View.VISIBLE
             onPageFinished(url)
         }
+
+        override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+            Log.d("OdysseusWebView", "Page started: $url")
+            super.onPageStarted(view, url, favicon)
+        }
+
+        override fun onReceivedError(
+            view: WebView,
+            request: WebResourceRequest,
+            error: WebResourceError
+        ) {
+            if (request.isForMainFrame) {
+                val msg = "${error.description} (${error.errorCode})"
+                Log.e("OdysseusWebView", "Main frame error: $msg")
+                onReceivedError(msg)
+            }
+        }
+
         override fun shouldOverrideUrlLoading(
             view: WebView, request: WebResourceRequest
         ): Boolean {

@@ -42,7 +42,9 @@ fun MainScreen(activity: FragmentActivity) {
     var authError    by remember { mutableStateOf<String?>(null) }
     var serverUrl    by remember { mutableStateOf("https://finchwire.site") }
     var isLocal      by remember { mutableStateOf(false) }
+    var isAutoNavEnabled by remember { mutableStateOf(true) }
     var loadProgress by remember { mutableStateOf(0) }
+    var loadError    by remember { mutableStateOf<String?>(null) }
     var showSettings by remember { mutableStateOf(false) }
 
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
@@ -51,9 +53,10 @@ fun MainScreen(activity: FragmentActivity) {
     LaunchedEffect(Unit) {
         activity.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             ServerRouter.urlFlow(context).collect { (url, local) ->
-                if (url != serverUrl) {
+                if (isAutoNavEnabled && url != serverUrl) {
                     serverUrl = url
                     isLocal = local
+                    loadError = null
                     webViewRef.value?.loadUrl(url)
                 }
             }
@@ -74,22 +77,25 @@ fun MainScreen(activity: FragmentActivity) {
         )
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(Modifier.fillMaxSize().background(Color.DarkGray)) {
 
         // WebView layer
         AndroidView(
             factory = { ctx ->
                 WebView(ctx).also { wv ->
                     webViewRef.value = wv
+                    wv.visibility = android.view.View.VISIBLE
                     wv.configure(
                         onProgressChanged = { loadProgress = it },
                         onPageFinished = {
+                            if (it != null && !it.contains("error")) loadError = null
                             if (!isLocked) {
                                 CredentialStore.load(ctx)?.let { creds ->
                                     wv.injectAutoLogin(creds.username, creds.password)
                                 }
                             }
-                        }
+                        },
+                        onReceivedError = { loadError = it }
                     )
                     wv.loadUrl(serverUrl)
                 }
@@ -107,6 +113,36 @@ fun MainScreen(activity: FragmentActivity) {
             )
         }
 
+        // Error message
+        loadError?.let { error ->
+            Column(
+                Modifier.fillMaxSize().padding(32.dp).background(Color.Black.copy(0.85f)),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(Icons.Default.CloudOff, null, tint = Color.White.copy(0.3f), modifier = Modifier.size(48.dp))
+                Spacer(Modifier.height(16.dp))
+                Text("Connection Failed", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.height(8.dp))
+                Text(error, color = Color.White.copy(0.5f), fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Spacer(Modifier.height(24.dp))
+                Button(onClick = { loadError = null; webViewRef.value?.reload() }) {
+                    Text("Retry")
+                }
+                if (isLocal) {
+                    TextButton(onClick = {
+                        isAutoNavEnabled = false
+                        isLocal = false
+                        serverUrl = "https://finchwire.site"
+                        loadError = null
+                        webViewRef.value?.loadUrl(serverUrl)
+                    }) {
+                        Text("Switch to Remote", color = Color(0xFF9D71F8))
+                    }
+                }
+            }
+        }
+
         // Top bar
         if (!isLocked) {
             TopBar(
@@ -114,6 +150,13 @@ fun MainScreen(activity: FragmentActivity) {
                 onLock = { isLocked = true },
                 onReload = { webViewRef.value?.reload() },
                 onSettings = { showSettings = true },
+                onSwitchNetwork = {
+                    isAutoNavEnabled = false
+                    isLocal = !isLocal
+                    serverUrl = if (isLocal) "http://192.168.1.73:7000" else "https://finchwire.site"
+                    loadError = null
+                    webViewRef.value?.loadUrl(serverUrl)
+                },
                 modifier = Modifier.align(Alignment.TopCenter)
             )
         }
@@ -148,6 +191,7 @@ private fun TopBar(
     onLock: () -> Unit,
     onReload: () -> Unit,
     onSettings: () -> Unit,
+    onSwitchNetwork: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -159,9 +203,19 @@ private fun TopBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Server badge
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            Box(Modifier.size(7.dp).background(if (isLocal) Color(0xFF4CAF50) else Color(0xFF5B86E5), CircleShape))
-            Text(if (isLocal) "Local" else "Remote", color = Color.White.copy(0.5f), fontSize = 11.sp)
+        Surface(
+            onClick = onSwitchNetwork,
+            color = Color.Transparent,
+            shape = CircleShape
+        ) {
+            Row(
+                modifier = Modifier.padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Box(Modifier.size(7.dp).background(if (isLocal) Color(0xFF4CAF50) else Color(0xFF5B86E5), CircleShape))
+                Text(if (isLocal) "Local" else "Remote", color = Color.White.copy(0.5f), fontSize = 11.sp)
+            }
         }
         Row {
             IconButton(onClick = onReload) { Icon(Icons.Default.Refresh, null, tint = Color.White.copy(0.7f)) }
