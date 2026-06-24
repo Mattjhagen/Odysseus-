@@ -29,8 +29,6 @@ import android.Manifest
 import android.os.Build
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 
 class MainActivity : FragmentActivity() {
     override fun onResume() {
@@ -48,6 +46,19 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent { OdysseusTheme { MainScreen(activity = this) } }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 1002) {
+            if (resultCode == android.app.Activity.RESULT_OK && data != null) {
+                val results = android.webkit.WebChromeClient.FileChooserParams.parseResult(resultCode, data)
+                AppState.fileChooserCallback?.onReceiveValue(results)
+            } else {
+                AppState.fileChooserCallback?.onReceiveValue(null)
+            }
+            AppState.fileChooserCallback = null
+        }
     }
 }
 
@@ -67,19 +78,6 @@ fun MainScreen(activity: FragmentActivity) {
     var isRefreshing by remember { mutableStateOf(false) }
 
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
-
-    val fileChooserLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val intent = result.data
-        if (result.resultCode == android.app.Activity.RESULT_OK && intent != null) {
-            val results = android.webkit.WebChromeClient.FileChooserParams.parseResult(result.resultCode, intent)
-            AppState.fileChooserCallback?.onReceiveValue(results)
-        } else {
-            AppState.fileChooserCallback?.onReceiveValue(null)
-        }
-        AppState.fileChooserCallback = null
-    }
 
     // Collect server URL changes
     LaunchedEffect(Unit) {
@@ -164,7 +162,12 @@ fun MainScreen(activity: FragmentActivity) {
                         onShowFileChooser = { intent, callback ->
                             AppState.fileChooserCallback?.onReceiveValue(null)
                             AppState.fileChooserCallback = callback
-                            fileChooserLauncher.launch(intent)
+                            try {
+                                activity.startActivityForResult(intent, 1002)
+                            } catch (e: Exception) {
+                                AppState.fileChooserCallback?.onReceiveValue(null)
+                                AppState.fileChooserCallback = null
+                            }
                         }
                     )
                     wv.loadUrl(serverUrl)

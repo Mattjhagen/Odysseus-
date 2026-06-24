@@ -66,6 +66,19 @@ class CoverActivity : FragmentActivity() {
         enableEdgeToEdge()
         setContent { OdysseusTheme { CoverScreen(activity = this) } }
     }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 1002) {
+            if (resultCode == android.app.Activity.RESULT_OK && data != null) {
+                val results = android.webkit.WebChromeClient.FileChooserParams.parseResult(resultCode, data)
+                AppState.fileChooserCallback?.onReceiveValue(results)
+            } else {
+                AppState.fileChooserCallback?.onReceiveValue(null)
+            }
+            AppState.fileChooserCallback = null
+        }
+    }
 }
 
 private enum class CoverPage { LOCK, STATUS, WEB }
@@ -89,19 +102,6 @@ fun CoverScreen(activity: FragmentActivity) {
                 webViewRef.value?.loadUrl(url)
             }
         }
-    }
-
-    val fileChooserLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val intent = result.data
-        if (result.resultCode == android.app.Activity.RESULT_OK && intent != null) {
-            val results = android.webkit.WebChromeClient.FileChooserParams.parseResult(result.resultCode, intent)
-            AppState.fileChooserCallback?.onReceiveValue(results)
-        } else {
-            AppState.fileChooserCallback?.onReceiveValue(null)
-        }
-        AppState.fileChooserCallback = null
     }
 
     fun authenticate() {
@@ -159,7 +159,12 @@ fun CoverScreen(activity: FragmentActivity) {
                         onShowFileChooser = { intent, callback ->
                             AppState.fileChooserCallback?.onReceiveValue(null)
                             AppState.fileChooserCallback = callback
-                            fileChooserLauncher.launch(intent)
+                            try {
+                                activity.startActivityForResult(intent, 1002)
+                            } catch (e: Exception) {
+                                AppState.fileChooserCallback?.onReceiveValue(null)
+                                AppState.fileChooserCallback = null
+                            }
                         },
                         onPageFinished = {
                             
