@@ -20,6 +20,62 @@ struct OdysseusWebView: UIViewRepresentable {
         refresh.addTarget(context.coordinator, action: #selector(Coordinator.handleRefresh(_:)), for: .valueChanged)
         wv.scrollView.refreshControl = refresh
 
+        // Setup Javascript Bridge
+        let contentController = wv.configuration.userContentController
+        contentController.add(context.coordinator, name: "odysseusObserver")
+        
+        let injectionScript = """
+            (function() {
+                if (window.__iosInjected) return;
+                window.__iosInjected = true;
+                
+                var sendBtn = document.querySelector('.send-btn');
+                if (!sendBtn) return;
+                
+                var isStreaming = false;
+                var observer = new MutationObserver(function(mutations) {
+                    mutations.forEach(function(mutation) {
+                        if (mutation.attributeName === 'data-mode') {
+                            var mode = sendBtn.getAttribute('data-mode');
+                            if (mode === 'streaming' && !isStreaming) {
+                                isStreaming = true;
+                                window.webkit.messageHandlers.odysseusObserver.postMessage({ action: 'startStream' });
+                            } else if (!mode && isStreaming) {
+                                isStreaming = false;
+                                var msgs = document.querySelectorAll('.msg-assistant .body');
+                                var lastMsgText = msgs.length > 0 ? msgs[msgs.length - 1].innerText : 'Message received';
+                                window.webkit.messageHandlers.odysseusObserver.postMessage({ action: 'endStream', message: lastMsgText });
+                            }
+                        }
+                    });
+                });
+                observer.observe(sendBtn, { attributes: true });
+            })();
+        """
+        let userScript = WKUserScript(source: injectionScript, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
+        contentController.addUserScript(userScript)
+
+        // Setup the reply handler
+        NotificationManager.shared.onReplyReceived = { replyText in
+            DispatchQueue.main.async {
+                let escapedReply = replyText.replacingOccurrences(of: "'", with: "\\'")
+                let js = """
+                (function() {
+                    var input = document.getElementById('message');
+                    if (input) {
+                        input.value = '\(escapedReply)';
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                        var btn = document.querySelector('.send-btn');
+                        if (btn) {
+                            btn.click();
+                        }
+                    }
+                })();
+                """
+                wv.evaluateJavaScript(js, completionHandler: nil)
+            }
+        }
+
         return wv
     }
 
@@ -27,7 +83,7 @@ struct OdysseusWebView: UIViewRepresentable {
 
     // MARK: - Coordinator
 
-    class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         let model: WebViewModel
 
         init(model: WebViewModel) { self.model = model }
@@ -53,6 +109,21 @@ struct OdysseusWebView: UIViewRepresentable {
                     model.canGoForward = wv.canGoForward
                 default: break
                 }
+            }
+        }
+
+        // MARK: WKScriptMessageHandler
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.name == "odysseusObserver",
+                  let body = message.body as? [String: Any],
+                  let action = body["action"] as? String else { return }
+
+            if action == "startStream" {
+                BackgroundTaskManager.shared.startTask()
+            } else if action == "endStream" {
+                let text = body["message"] as? String ?? "Done"
+                BackgroundTaskManager.shared.endTask()
+                NotificationManager.shared.showNotification(message: text)
             }
         }
 

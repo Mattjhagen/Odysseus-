@@ -12,7 +12,7 @@ struct ContentView: View {
             NavigationStack {
                 ZStack(alignment: .top) {
                     OdysseusWebView(model: webModel)
-                        .ignoresSafeArea()
+                        .ignoresSafeArea(.container, edges: .all)
 
                     if webModel.isLoading && webModel.loadProgress < 1.0 {
                         ProgressView(value: webModel.loadProgress)
