@@ -44,6 +44,17 @@ import kotlinx.coroutines.launch
  *   2 — Mini WebView (scaled Odysseus UI)
  */
 class CoverActivity : FragmentActivity() {
+    override fun onResume() {
+        super.onResume()
+        AppState.isForeground = true
+        NotificationHelper.dismissReplyNotification(this)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        AppState.isForeground = false
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -110,9 +121,46 @@ fun CoverScreen(activity: FragmentActivity) {
             factory = { ctx ->
                 WebView(ctx).also { wv ->
                     webViewRef.value = wv
+                    wv.addJavascriptInterface(WebAppInterface(ctx), "Android")
+                    AppState.mainWebView = wv
+                    wv.layoutParams = android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                    )
                     wv.configure(
                         onProgressChanged = { loadProgress = it },
                         onPageFinished = {
+                            
+                            val injectionScript = """
+                                (function() {
+                                    if (window.__androidInjected) return;
+                                    window.__androidInjected = true;
+                                    
+                                    var sendBtn = document.querySelector('.send-btn');
+                                    if (!sendBtn) return;
+                                    
+                                    var isStreaming = false;
+                                    var observer = new MutationObserver(function(mutations) {
+                                        mutations.forEach(function(mutation) {
+                                            if (mutation.attributeName === 'data-mode') {
+                                                var mode = sendBtn.getAttribute('data-mode');
+                                                if (mode === 'streaming' && !isStreaming) {
+                                                    isStreaming = true;
+                                                    if (window.Android) window.Android.startStream();
+                                                } else if (!mode && isStreaming) {
+                                                    isStreaming = false;
+                                                    var msgs = document.querySelectorAll('.msg-assistant .body');
+                                                    var lastMsgText = msgs.length > 0 ? msgs[msgs.length - 1].innerText : 'Message received';
+                                                    if (window.Android) window.Android.endStream(lastMsgText);
+                                                }
+                                            }
+                                        });
+                                    });
+                                    observer.observe(sendBtn, { attributes: true });
+                                })();
+                            """.trimIndent()
+                            wv.evaluateJavascript(injectionScript, null)
+
                             if (page != CoverPage.LOCK) {
                                 CredentialStore.load(ctx)?.let { c ->
                                     wv.injectAutoLogin(c.username, c.password)
@@ -128,6 +176,7 @@ fun CoverScreen(activity: FragmentActivity) {
             },
             modifier = Modifier
                 .fillMaxSize()
+                .imePadding()
                 .alpha(if (page == CoverPage.WEB) 1f else 0f)
         )
 
@@ -179,7 +228,16 @@ fun CoverScreen(activity: FragmentActivity) {
         }
     }
 
-    LaunchedEffect(Unit) { authenticate() }
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
+    var hasPromptedBiometrics by remember { mutableStateOf(false) }
+
+    LaunchedEffect(lifecycleState, page) {
+        if (lifecycleState == Lifecycle.State.RESUMED && page == CoverPage.LOCK && !hasPromptedBiometrics) {
+            hasPromptedBiometrics = true
+            authenticate()
+        }
+    }
 }
 
 @Composable

@@ -11,6 +11,8 @@ object CredentialStore {
     private const val KEY_U  = "username"
     private const val KEY_P  = "password"
 
+    private const val KEY_PIN = "app_pin"
+
     private fun prefs(context: Context) = EncryptedSharedPreferences.create(
         context,
         FILE,
@@ -31,6 +33,14 @@ object CredentialStore {
         val u = p.getString(KEY_U, null) ?: return null
         val pw = p.getString(KEY_P, null) ?: return null
         return Credentials(u, pw)
+    }
+
+    fun saveAppPin(context: Context, pin: String) {
+        prefs(context).edit().putString(KEY_PIN, pin).apply()
+    }
+
+    fun getAppPin(context: Context): String? {
+        return prefs(context).getString(KEY_PIN, null)
     }
 
     fun clear(context: Context) {

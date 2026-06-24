@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,6 +27,17 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.launch
 
 class MainActivity : FragmentActivity() {
+    override fun onResume() {
+        super.onResume()
+        AppState.isForeground = true
+        NotificationHelper.dismissReplyNotification(this)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        AppState.isForeground = false
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -46,6 +58,7 @@ fun MainScreen(activity: FragmentActivity) {
     var loadProgress by remember { mutableStateOf(0) }
     var loadError    by remember { mutableStateOf<String?>(null) }
     var showSettings by remember { mutableStateOf(false) }
+    var isRefreshing by remember { mutableStateOf(false) }
 
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
 
@@ -63,32 +76,57 @@ fun MainScreen(activity: FragmentActivity) {
         }
     }
 
-    fun authenticate() {
-        authError = null
-        BiometricHelper.prompt(
-            activity = activity,
-            onSuccess = {
-                isLocked = false
-                CredentialStore.load(context)?.let { creds ->
-                    webViewRef.value?.injectAutoLogin(creds.username, creds.password)
-                }
-            },
-            onFailure = { authError = it }
-        )
-    }
+    // PinPadOverlay will handle biometrics automatically when displayed
+
 
     Box(Modifier.fillMaxSize().background(Color.DarkGray)) {
 
-        // WebView layer
         AndroidView(
             factory = { ctx ->
                 WebView(ctx).also { wv ->
                     webViewRef.value = wv
+                    wv.addJavascriptInterface(WebAppInterface(ctx), "Android")
+                    AppState.mainWebView = wv
+                    wv.layoutParams = android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                    )
                     wv.visibility = android.view.View.VISIBLE
                     wv.configure(
                         onProgressChanged = { loadProgress = it },
                         onPageFinished = {
                             if (it != null && !it.contains("error")) loadError = null
+                            
+                            val injectionScript = """
+                                (function() {
+                                    if (window.__androidInjected) return;
+                                    window.__androidInjected = true;
+                                    
+                                    var sendBtn = document.querySelector('.send-btn');
+                                    if (!sendBtn) return;
+                                    
+                                    var isStreaming = false;
+                                    var observer = new MutationObserver(function(mutations) {
+                                        mutations.forEach(function(mutation) {
+                                            if (mutation.attributeName === 'data-mode') {
+                                                var mode = sendBtn.getAttribute('data-mode');
+                                                if (mode === 'streaming' && !isStreaming) {
+                                                    isStreaming = true;
+                                                    if (window.Android) window.Android.startStream();
+                                                } else if (!mode && isStreaming) {
+                                                    isStreaming = false;
+                                                    var msgs = document.querySelectorAll('.msg-assistant .body');
+                                                    var lastMsgText = msgs.length > 0 ? msgs[msgs.length - 1].innerText : 'Message received';
+                                                    if (window.Android) window.Android.endStream(lastMsgText);
+                                                }
+                                            }
+                                        });
+                                    });
+                                    observer.observe(sendBtn, { attributes: true });
+                                })();
+                            """.trimIndent()
+                            wv.evaluateJavascript(injectionScript, null)
+
                             if (!isLocked) {
                                 CredentialStore.load(ctx)?.let { creds ->
                                     wv.injectAutoLogin(creds.username, creds.password)
@@ -100,7 +138,7 @@ fun MainScreen(activity: FragmentActivity) {
                     wv.loadUrl(serverUrl)
                 }
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize().navigationBarsPadding().imePadding()
         )
 
         // Progress bar
@@ -167,9 +205,21 @@ fun MainScreen(activity: FragmentActivity) {
             enter = fadeIn(),
             exit = fadeOut()
         ) {
-            LockOverlay(
+            var pinMode by remember { mutableStateOf(if (CredentialStore.getAppPin(context) == null) PinMode.SETUP else PinMode.VERIFY) }
+            PinPadOverlay(
+                activity = activity,
                 authError = authError,
-                onUnlock = { authenticate() }
+                onUnlock = {
+                    isLocked = false
+                    CredentialStore.load(context)?.let { creds ->
+                        webViewRef.value?.injectAutoLogin(creds.username, creds.password)
+                    }
+                },
+                onSetPin = { pin ->
+                    CredentialStore.saveAppPin(context, pin)
+                    pinMode = PinMode.VERIFY
+                },
+                pinMode = pinMode
             )
         }
     }
@@ -180,9 +230,6 @@ fun MainScreen(activity: FragmentActivity) {
             onDismiss = { showSettings = false }
         )
     }
-
-    // Auto-prompt on first launch
-    LaunchedEffect(Unit) { authenticate() }
 }
 
 @Composable
@@ -225,39 +272,8 @@ private fun TopBar(
     }
 }
 
-@Composable
-private fun LockOverlay(authError: String?, onUnlock: () -> Unit) {
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
-        Column(
-            Modifier.align(Alignment.Center),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(28.dp)
-        ) {
-            Text("Odysseus", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Thin,
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Serif)
-            Text("finchwire.site", color = Color.White.copy(0.35f), fontSize = 12.sp)
+// LockOverlay removed in favor of PinPadOverlay
 
-            Spacer(Modifier.height(8.dp))
-
-            authError?.let {
-                Text(it, color = Color(0xFFEF5350), fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 40.dp),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            }
-
-            Button(
-                onClick = onUnlock,
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-                shape = CircleShape,
-                contentPadding = PaddingValues(horizontal = 32.dp, vertical = 14.dp)
-            ) {
-                Icon(Icons.Default.Fingerprint, null, tint = Color.Black, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Unlock", color = Color.Black, fontWeight = FontWeight.Medium)
-            }
-        }
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
